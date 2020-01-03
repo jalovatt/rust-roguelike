@@ -6,10 +6,10 @@ mod tile;
 mod map;
 mod object;
 mod game;
+mod rect;
 
-use map as Map;
-use object::Object;
 use game::Game;
+use map::Map;
 
 static SCREEN_WIDTH: i32 = 80;
 static SCREEN_HEIGHT: i32 = 50;
@@ -33,19 +33,23 @@ static COLOR_LIGHT_GROUND: Color = Color { r: 200, g: 180, b: 50, };
 
 static LIMIT_FPS: i32 = 20;
 
+static MAX_ROOM_MONSTERS: i32 = 3;
+
+static PLAYER: usize = 0;
+
 struct Tcod {
   root: Root,
   con: Offscreen,
   fov: FovMap,
 }
 
-fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recompute: bool) {
+fn render_all(tcod: &mut Tcod, game: &mut Game, fov_recompute: bool) {
   if fov_recompute {
-    let player = &objects[0];
+    let player = &game.objects[PLAYER];
     tcod.fov.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
   }
 
-  for object in objects {
+  for object in game.objects.iter() {
     if tcod.fov.is_in_fov(object.x, object.y) {
       object.draw(&mut tcod.con);
     }
@@ -55,12 +59,12 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recomput
     for x in 0..MAP_WIDTH {
       let visible = tcod.fov.is_in_fov(x, y);
 
-      let explored = &mut game.map[x as usize][y as usize].explored;
+      let explored = &mut game.map.tiles[x as usize][y as usize].explored;
 
       if visible { *explored = true; }
       if !*explored { continue; }
 
-      let wall = game.map[x as usize][y as usize].block_sight;
+      let wall = game.map.tiles[x as usize][y as usize].block_sight;
 
       let color = match (visible, wall) {
         (false, true) => COLOR_DARK_WALL,
@@ -84,7 +88,8 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recomput
   );
 }
 
-fn handle_keys(tcod: &mut Tcod, game: &Game, player: &mut Object) -> bool {
+#[allow(clippy::ptr_arg)]
+fn handle_keys(tcod: &mut Tcod, game: &mut Game) -> bool {
   use tcod::input::Key;
   use tcod::input::KeyCode::*;
 
@@ -95,14 +100,27 @@ fn handle_keys(tcod: &mut Tcod, game: &Game, player: &mut Object) -> bool {
       tcod.root.set_fullscreen(!fullscreen);
     },
     Key { code: Escape, .. } => return true,
-    Key { code: Up, .. } => player.move_by(0, -1, game),
-    Key { code: Down, .. } => player.move_by(0, 1, game),
-    Key { code: Left, .. } => player.move_by(-1, 0, game),
-    Key { code: Right, .. } => player.move_by(1, 0, game),
+    Key { code: Up, .. } => game.move_by(PLAYER, 0, -1),
+    Key { code: Down, .. } => game.move_by(PLAYER, 0, 1),
+    Key { code: Left, .. } => game.move_by(PLAYER, -1, 0),
+    Key { code: Right, .. } => game.move_by(PLAYER, 1, 0),
     _ => {}
   }
 
   false
+}
+
+fn set_fov_map(fov: &mut FovMap, map: &Map) {
+  for y in 0..MAP_HEIGHT {
+    for x in 0..MAP_WIDTH {
+      fov.set(
+        x,
+        y,
+        !map.tiles[x as usize][y as usize].block_sight,
+        !map.tiles[x as usize][y as usize].blocked,
+      );
+    }
+  }
 }
 
 fn main() {
@@ -121,41 +139,23 @@ fn main() {
 
   tcod::system::set_fps(LIMIT_FPS);
 
-  let player = Object::new(0, 0, '@', WHITE);
-  let npc = Object::new(SCREEN_WIDTH / 2 - 5, SCREEN_HEIGHT / 2, '@', YELLOW);
-
-  let mut objects = [player, npc];
-
-  let mut game = Game {
-    map: Map::make_map(&mut objects[0]),
-  };
-
-  for y in 0..MAP_HEIGHT {
-    for x in 0..MAP_WIDTH {
-      tcod.fov.set(
-        x,
-        y,
-        !game.map[x as usize][y as usize].block_sight,
-        !game.map[x as usize][y as usize].blocked,
-      );
-    }
-  }
+  let mut game = Game::new();
+  set_fov_map(&mut tcod.fov, &game.map);
 
   let mut previous_player_position = (-1, -1);
 
   while !tcod.root.window_closed() {
     tcod.con.clear();
 
-    let fov_recompute = previous_player_position != (objects[0].x, objects[0].y);
-    render_all(&mut tcod, &mut game, &objects, fov_recompute);
+    let fov_recompute = previous_player_position != (game.objects[PLAYER].pos());
 
+    render_all(&mut tcod, &mut game, fov_recompute);
     tcod.root.flush();
 
-    let player = &mut objects[0];
-
+    let player = &mut game.objects[0];
     previous_player_position = (player.x, player.y);
 
-    let exit = handle_keys(&mut tcod, &game, player);
+    let exit = handle_keys(&mut tcod, &mut game);
     if exit { break; }
   }
 }
