@@ -62,15 +62,16 @@ impl Object {
 struct Tile {
   blocked: bool,
   block_sight: bool,
+  explored: bool,
 }
 
 impl Tile {
   pub fn empty() -> Self {
-    Tile { blocked: false, block_sight: false }
+    Tile { blocked: false, explored: false, block_sight: false }
   }
 
   pub fn wall() -> Self {
-    Tile { blocked: true, block_sight: true }
+    Tile { blocked: true, explored: false, block_sight: true }
   }
 }
 
@@ -170,7 +171,7 @@ fn make_map(player: &mut Object) -> Map {
   map
 }
 
-fn render_all(tcod: &mut Tcod, game: &Game, objects: &[Object], fov_recompute: bool) {
+fn render_all(tcod: &mut Tcod, game: &mut Game, objects: &[Object], fov_recompute: bool) {
   if fov_recompute {
     let player = &objects[0];
     tcod.fov.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
@@ -185,6 +186,12 @@ fn render_all(tcod: &mut Tcod, game: &Game, objects: &[Object], fov_recompute: b
   for y in 0..MAP_HEIGHT {
     for x in 0..MAP_WIDTH {
       let visible = tcod.fov.is_in_fov(x, y);
+
+      let explored = &mut game.map[x as usize][y as usize].explored;
+
+      if visible { *explored = true; }
+      if !*explored { continue; }
+
       let wall = game.map[x as usize][y as usize].block_sight;
 
       let color = match (visible, wall) {
@@ -251,7 +258,7 @@ fn main() {
 
   let mut objects = [player, npc];
 
-  let game = Game {
+  let mut game = Game {
     map: make_map(&mut objects[0]),
   };
 
@@ -272,7 +279,7 @@ fn main() {
     tcod.con.clear();
 
     let fov_recompute = previous_player_position != (objects[0].x, objects[0].y);
-    render_all(&mut tcod, &game, &objects, fov_recompute);
+    render_all(&mut tcod, &mut game, &objects, fov_recompute);
 
     tcod.root.flush();
 
