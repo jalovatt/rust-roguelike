@@ -88,26 +88,37 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, fov_recompute: bool) {
   );
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PlayerAction {
+  TookTurn,
+  DidntTakeTurn,
+  Exit,
+}
+
 #[allow(clippy::ptr_arg)]
-fn handle_keys(tcod: &mut Tcod, game: &mut Game) -> bool {
+fn handle_keys(tcod: &mut Tcod, game: &mut Game) -> PlayerAction {
   use tcod::input::Key;
   use tcod::input::KeyCode::*;
 
   let key = tcod.root.wait_for_keypress(true);
-  match key {
-    Key { code: Enter, alt: true, .. } => {
+  let player_alive = game.objects[PLAYER].alive;
+
+  match (key, key.text(), player_alive) {
+    ( Key { code: Enter, alt: true, .. }, _, _ ) => {
       let fullscreen = tcod.root.is_fullscreen();
       tcod.root.set_fullscreen(!fullscreen);
+
+      return PlayerAction::DidntTakeTurn
     },
-    Key { code: Escape, .. } => return true,
-    Key { code: Up, .. } => game.move_by(PLAYER, 0, -1),
-    Key { code: Down, .. } => game.move_by(PLAYER, 0, 1),
-    Key { code: Left, .. } => game.move_by(PLAYER, -1, 0),
-    Key { code: Right, .. } => game.move_by(PLAYER, 1, 0),
-    _ => {}
+    ( Key { code: Escape, .. }, _, true ) => return PlayerAction::Exit,
+    ( Key { code: Up, .. }, _, true ) => game.player_move_or_attack(0, -1),
+    ( Key { code: Down, .. }, _, true ) => game.player_move_or_attack(0, 1),
+    ( Key { code: Left, .. }, _, true ) => game.player_move_or_attack(-1, 0),
+    ( Key { code: Right, .. }, _, true ) => game.player_move_or_attack(1, 0),
+    _ => return PlayerAction::DidntTakeTurn,
   }
 
-  false
+  PlayerAction::TookTurn
 }
 
 fn set_fov_map(fov: &mut FovMap, map: &Map) {
@@ -155,7 +166,11 @@ fn main() {
     let player = &mut game.objects[0];
     previous_player_position = (player.x, player.y);
 
-    let exit = handle_keys(&mut tcod, &mut game);
-    if exit { break; }
+    let action = handle_keys(&mut tcod, &mut game);
+    if action == PlayerAction::Exit { break; }
+
+    if game.objects[PLAYER].alive && action == PlayerAction::TookTurn {
+      game.update_objects();
+    }
   }
 }

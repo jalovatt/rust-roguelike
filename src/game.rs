@@ -64,4 +64,28 @@ impl Game {
       self.objects[id].set_pos(x + dx, y + dy);
     }
   }
+
+  pub fn player_move_or_attack(&mut self, dx: i32, dy: i32) {
+    let x = self.objects[PLAYER].x + dx;
+    let y = self.objects[PLAYER].y + dy;
+
+    let target_id = self.objects.iter().position(|obj| obj.pos() == (x, y));
+    match target_id {
+      Some(target_id) => {
+        println!(
+          "The {} laughs at your puny efforts to attack it!",
+          self.objects[target_id].name
+        );
+      }
+      None => self.move_by(PLAYER, dx, dy)
+    }
+  }
+
+  pub fn update_objects(&mut self) {
+    for (id, object) in self.objects.iter().enumerate() {
+      if id == PLAYER { continue; }
+
+      println!("The {} growls!", object.name);
+    }
+  }
 }
