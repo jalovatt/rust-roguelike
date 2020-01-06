@@ -1,7 +1,9 @@
 use tcod::colors::*;
 use tcod::console::*;
+use tcod::input::{self, Event, Key, Mouse};
 use tcod::map::{FovAlgorithm, Map as FovMap};
 
+mod messages;
 mod tile;
 mod map;
 mod object;
@@ -16,8 +18,17 @@ use map::Map;
 static SCREEN_WIDTH: i32 = 80;
 static SCREEN_HEIGHT: i32 = 50;
 
+static PANEL_HEIGHT: i32 = 7;
+static PANEL_Y: i32 = SCREEN_HEIGHT - PANEL_HEIGHT;
+
+static BAR_WIDTH: i32 = 20;
+
+static MSG_X: i32 = BAR_WIDTH + 2;
+static MSG_WIDTH: i32 = SCREEN_WIDTH - MSG_X;
+static MSG_HEIGHT: i32 = PANEL_HEIGHT - 1;
+
 static MAP_WIDTH: i32 = 80;
-static MAP_HEIGHT: i32 = 45;
+static MAP_HEIGHT: i32 = 43;
 
 static ROOM_MAX_SIZE: i32 = 10;
 static ROOM_MIN_SIZE: i32 = 6;
@@ -42,7 +53,42 @@ static PLAYER: usize = 0;
 struct Tcod {
   root: Root,
   con: Offscreen,
+  panel: Offscreen,
   fov: FovMap,
+  key: Key,
+  mouse: Mouse,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn render_bar(
+  panel: &mut Offscreen,
+  x: i32,
+  y: i32,
+  total_width: i32,
+  name: &str,
+  value: i32,
+  maximum: i32,
+  bar_color: Color,
+  back_color: Color,
+) {
+  let bar_width = (value as f32 / maximum as f32 * total_width as f32) as i32;
+
+  panel.set_default_background(back_color);
+  panel.rect(x, y, total_width, 1, false, BackgroundFlag::Screen);
+
+  panel.set_default_background(bar_color);
+  if bar_width > 0 {
+    panel.rect(x, y, bar_width, 1, false, BackgroundFlag::Screen);
+  }
+
+  panel.set_default_foreground(WHITE);
+  panel.print_ex(
+    x + total_width / 2,
+    y,
+    BackgroundFlag::None,
+    TextAlignment::Center,
+    format!("{}: {}/{}", name, value, maximum),
+  );
 }
 
 fn render_all(tcod: &mut Tcod, game: &mut Game, fov_recompute: bool) {
@@ -96,16 +142,55 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, fov_recompute: bool) {
     1.0,
   );
 
-  tcod.root.set_default_foreground(WHITE);
-  if let Some(fighter) = game.objects[PLAYER].fighter {
-    tcod.root.print_ex(
-      1,
-      SCREEN_HEIGHT - 2,
-      BackgroundFlag::None,
-      TextAlignment::Left,
-      format!("HP: {}/{} ", fighter.hp, fighter.max_hp),
-    );
+  tcod.panel.set_default_background(BLACK);
+  tcod.panel.clear();
+
+  let (hp, max_hp) = game.objects[PLAYER].fighter.map_or((0, 0), |f| (f.hp, f.max_hp));
+
+  render_bar(
+    &mut tcod.panel,
+    1,
+    1,
+    BAR_WIDTH,
+    "HP",
+    hp,
+    max_hp,
+    LIGHT_RED,
+    DARK_RED,
+  );
+
+  tcod.panel.set_default_foreground(LIGHT_GREY);
+  tcod.panel.print_ex(
+    1,
+    0,
+    BackgroundFlag::None,
+    TextAlignment::Left,
+    get_names_under_mouse(tcod, game),
+  );
+
+  let mut y = MSG_HEIGHT;
+  for &(ref msg, color) in game.messages.iter().rev() {
+    let height = tcod.panel.get_height_rect(MSG_X, y, MSG_WIDTH, 0, msg);
+    y -= height;
+
+    if y < 0 {
+      break;
+    }
+
+    tcod.panel.set_default_foreground(color);
+    tcod.panel.print_rect(MSG_X, y, MSG_WIDTH, 0, msg);
   }
+
+  blit(
+    &tcod.panel,
+    (0, 0),
+    (SCREEN_WIDTH, PANEL_HEIGHT),
+    &mut tcod.root,
+    (0, PANEL_Y),
+    1.0,
+    1.0,
+  );
+
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -115,15 +200,25 @@ enum PlayerAction {
   Exit,
 }
 
+fn get_names_under_mouse(tcod: &Tcod, game: &Game) -> String {
+  let (x, y) = (tcod.mouse.cx as i32, tcod.mouse.cy as i32);
+
+  let names = game.objects
+    .iter()
+    .filter(|obj| obj.pos() == (x, y) && tcod.fov.is_in_fov(obj.x, obj.y))
+    .map(|obj| obj.name.clone())
+    .collect::<Vec<_>>();
+
+  names.join(", ")
+}
+
 #[allow(clippy::ptr_arg)]
 fn handle_keys(tcod: &mut Tcod, game: &mut Game) -> PlayerAction {
-  use tcod::input::Key;
   use tcod::input::KeyCode::*;
 
-  let key = tcod.root.wait_for_keypress(true);
   let player_alive = game.objects[PLAYER].alive;
 
-  match (key, key.text(), player_alive) {
+  match (tcod.key, tcod.key.text(), player_alive) {
     ( Key { code: Enter, alt: true, .. }, _, _ ) => {
       let fullscreen = tcod.root.is_fullscreen();
       tcod.root.set_fullscreen(!fullscreen);
@@ -165,7 +260,10 @@ fn main() {
   let mut tcod = Tcod {
     root,
     con: Offscreen::new(MAP_WIDTH, MAP_HEIGHT),
+    panel: Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT),
     fov: FovMap::new(MAP_WIDTH, MAP_HEIGHT),
+    key: Default::default(),
+    mouse: Default::default(),
   };
 
   tcod::system::set_fps(LIMIT_FPS);
@@ -175,10 +273,21 @@ fn main() {
 
   let mut previous_player_position = (-1, -1);
 
+  game.messages.add(
+    "Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.",
+    RED,
+  );
+
   while !tcod.root.window_closed() {
     tcod.con.clear();
 
     let fov_recompute = previous_player_position != (game.objects[PLAYER].pos());
+
+    match input::check_for_event(input::MOUSE | input::KEY_PRESS) {
+      Some((_, Event::Mouse(m))) => tcod.mouse = m,
+      Some((_, Event::Key(k))) => tcod.key = k,
+      _ => tcod.key = Default::default(),
+    }
 
     render_all(&mut tcod, &mut game, fov_recompute);
     tcod.root.flush();

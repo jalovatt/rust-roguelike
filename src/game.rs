@@ -2,6 +2,7 @@ use rand::Rng;
 use tcod::map::{Map as FovMap};
 use tcod::{colors, colors::*};
 
+use crate::messages::Messages;
 use crate::object::Object;
 use crate::fighter::Fighter;
 use crate::ai::Ai;
@@ -25,14 +26,16 @@ fn mut_two<T>(first: usize, second: usize, items: &mut [T]) -> (&mut T, &mut T) 
 pub struct Game {
   pub map: map::Map,
   pub objects: Vec<Object>,
+  pub messages: Messages,
 }
 
 impl Game {
   pub fn new() -> Game {
     let map = Map::new();
     let objects = Vec::new();
+    let messages = Messages::new();
 
-    let mut game = Game { map, objects };
+    let mut game = Game { map, objects, messages };
     game.create_objects();
 
     game
@@ -144,10 +147,10 @@ impl Game {
 
     let damage = source.fighter.unwrap().power - target.fighter.unwrap().defense;
     if damage > 0 {
-      println!("{} attacks {} for {} hit points", source.name, target.name, damage);
-      target.take_damage(damage);
+      self.messages.add(format!("{} attacks {} for {} hit points", source.name, target.name, damage), WHITE);
+      target.take_damage(damage, &mut self.messages);
     } else {
-      println!("{} attacks {} but it has no effect", source.name, target.name);
+      self.messages.add(format!("{} attacks {} but it has no effect", source.name, target.name), WHITE);
     }
   }
 
@@ -164,15 +167,15 @@ impl Game {
     }
   }
 
-  pub fn player_death(player: &mut Object) {
-    println!("You died!");
+  pub fn player_death(player: &mut Object, messages: &mut Messages) {
+    messages.add("You died!", RED);
 
     player.char = '%';
     player.color = DARK_RED;
   }
 
-  pub fn monster_death(monster: &mut Object) {
-    println!("{} died!", monster.name);
+  pub fn monster_death(monster: &mut Object, messages: &mut Messages) {
+    messages.add(format!("{} died!", monster.name), ORANGE);
 
     monster.char = '%';
     monster.color = DARK_RED;
