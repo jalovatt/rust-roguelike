@@ -9,6 +9,19 @@ use crate::map::Map;
 
 use super::*;
 
+fn mut_two<T>(first: usize, second: usize, items: &mut [T]) -> (&mut T, &mut T) {
+  assert!(first != second);
+
+  let split_at_index = std::cmp::max(first, second);
+  let (first_slice, second_slice) = items.split_at_mut(split_at_index);
+
+  if first < second {
+    (&mut first_slice[first], &mut second_slice[0])
+  } else {
+    (&mut second_slice[0], &mut first_slice[second])
+  }
+}
+
 pub struct Game {
   pub map: map::Map,
   pub objects: Vec<Object>,
@@ -43,6 +56,7 @@ impl Game {
       hp: 30,
       defense: 2,
       power: 5,
+      on_death: fighter::DeathCallback::Player,
     });
 
     self.objects.push(player);
@@ -67,6 +81,7 @@ impl Game {
             hp: 10,
             defense: 0,
             power: 3,
+            on_death: fighter::DeathCallback::Monster,
           });
           monster.ai = Some(Ai::Basic);
         } else {
@@ -76,6 +91,7 @@ impl Game {
             hp: 16,
             defense: 1,
             power: 4,
+            on_death: fighter::DeathCallback::Monster,
           });
           monster.ai = Some(Ai::Basic);
         };
@@ -100,13 +116,10 @@ impl Game {
     let x = self.objects[PLAYER].x + dx;
     let y = self.objects[PLAYER].y + dy;
 
-    let target_id = self.objects.iter().position(|obj| obj.pos() == (x, y));
+    let target_id = self.objects.iter().position(|obj| obj.pos() == (x, y) && obj.fighter.is_some());
     match target_id {
       Some(target_id) => {
-        println!(
-          "The {} laughs at your puny efforts to attack it!",
-          self.objects[target_id].name
-        );
+        self.attack(PLAYER, target_id);
       }
       None => self.move_by(PLAYER, dx, dy)
     }
@@ -126,25 +139,54 @@ impl Game {
     self.move_by(id, nx, ny);
   }
 
+  pub fn attack(&mut self, id: usize, other_id: usize) {
+    let (source, target) = mut_two(id, other_id, &mut self.objects);
+
+    let damage = source.fighter.unwrap().power - target.fighter.unwrap().defense;
+    if damage > 0 {
+      println!("{} attacks {} for {} hit points", source.name, target.name, damage);
+      target.take_damage(damage);
+    } else {
+      println!("{} attacks {} but it has no effect", source.name, target.name);
+    }
+  }
+
   fn ai_turn(&mut self, id: usize, fov_map: &FovMap) {
     let (ai_x, ai_y) = self.objects[id].pos();
 
     if fov_map.is_in_fov(ai_x, ai_y) {
       if self.objects[id].distance_to(&self.objects[PLAYER]) >= 2.0 {
         self.move_towards(id, PLAYER);
-      } else if self.objects[PLAYER].fighter.map_or(false, |f| f.hp > 0) {
-        let monster = &self.objects[id];
-
-        println!("The {} attacks you!", monster.name);
+      } else if self.objects[id].fighter.is_some()
+        && self.objects[PLAYER].fighter.map_or(false, |f| f.hp > 0) {
+        self.attack(id, PLAYER);
       }
     }
+  }
+
+  pub fn player_death(player: &mut Object) {
+    println!("You died!");
+
+    player.char = '%';
+    player.color = DARK_RED;
+  }
+
+  pub fn monster_death(monster: &mut Object) {
+    println!("{} died!", monster.name);
+
+    monster.char = '%';
+    monster.color = DARK_RED;
+    monster.blocks = false;
+    monster.fighter = None;
+    monster.ai = None;
+    monster.name = format!("remains of {}", monster.name);
   }
 
   pub fn update_objects(&mut self, fov_map: &FovMap) {
     for id in 0..self.objects.len() {
       if id == PLAYER { continue; }
 
-      if self.objects[id].ai.is_some() {
+      if self.objects[id].alive && self.objects[id].ai.is_some() {
         self.ai_turn(id, fov_map);
       }
     }

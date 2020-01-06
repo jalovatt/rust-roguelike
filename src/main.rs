@@ -51,7 +51,14 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, fov_recompute: bool) {
     tcod.fov.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
   }
 
-  for object in game.objects.iter() {
+  let mut to_draw: Vec<_> = game.objects
+    .iter()
+    .filter(|o| tcod.fov.is_in_fov(o.x, o.y))
+    .collect();
+
+  to_draw.sort_by(|o1, o2| { o1.blocks.cmp(&o2.blocks)});
+
+  for object in &to_draw {
     if tcod.fov.is_in_fov(object.x, object.y) {
       object.draw(&mut tcod.con);
     }
@@ -88,6 +95,17 @@ fn render_all(tcod: &mut Tcod, game: &mut Game, fov_recompute: bool) {
     1.0,
     1.0,
   );
+
+  tcod.root.set_default_foreground(WHITE);
+  if let Some(fighter) = game.objects[PLAYER].fighter {
+    tcod.root.print_ex(
+      1,
+      SCREEN_HEIGHT - 2,
+      BackgroundFlag::None,
+      TextAlignment::Left,
+      format!("HP: {}/{} ", fighter.hp, fighter.max_hp),
+    );
+  }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -112,7 +130,7 @@ fn handle_keys(tcod: &mut Tcod, game: &mut Game) -> PlayerAction {
 
       return PlayerAction::DidntTakeTurn
     },
-    ( Key { code: Escape, .. }, _, true ) => return PlayerAction::Exit,
+    ( Key { code: Escape, .. }, _, _ ) => return PlayerAction::Exit,
     ( Key { code: Up, .. }, _, true ) => game.player_move_or_attack(0, -1),
     ( Key { code: Down, .. }, _, true ) => game.player_move_or_attack(0, 1),
     ( Key { code: Left, .. }, _, true ) => game.player_move_or_attack(-1, 0),

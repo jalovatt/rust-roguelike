@@ -37,6 +37,21 @@ impl Object {
     ((dx.pow(2) + dy.pow(2)) as f32).sqrt()
   }
 
+  pub fn take_damage(&mut self, damage: i32) {
+    let mut fighter = self.fighter.as_mut().unwrap();
+    let mut hp = fighter.hp - damage;
+    if hp < 0 { hp = 0; }
+
+    fighter.hp = hp;
+
+    println!("{} has {} hit points", self.name, fighter.hp);
+
+    if hp == 0 {
+      self.alive = false;
+      fighter.on_death.callback(self);
+    }
+  }
+
   pub fn draw(&self, con: &mut dyn Console) {
     con.set_default_foreground(self.color);
     con.put_char(self.x, self.y, self.char, BackgroundFlag::None);
