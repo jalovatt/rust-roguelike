@@ -7,6 +7,8 @@ mod map;
 mod object;
 mod game;
 mod rect;
+mod fighter;
+mod ai;
 
 use game::Game;
 use map::Map;
@@ -170,7 +172,7 @@ fn main() {
     if action == PlayerAction::Exit { break; }
 
     if game.objects[PLAYER].alive && action == PlayerAction::TookTurn {
-      game.update_objects();
+      game.update_objects(&tcod.fov);
     }
   }
 }

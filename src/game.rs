@@ -1,7 +1,10 @@
 use rand::Rng;
+use tcod::map::{Map as FovMap};
 use tcod::{colors, colors::*};
 
 use crate::object::Object;
+use crate::fighter::Fighter;
+use crate::ai::Ai;
 use crate::map::Map;
 
 use super::*;
@@ -31,8 +34,18 @@ impl Game {
 
   fn create_objects(&mut self) {
     let (x, y) = self.map.rooms[0].center();
-    self.objects.push(Object::new(x, y, '@', WHITE, "player", true));
-    self.objects[PLAYER].alive = true;
+
+    let mut player = Object::new(x, y, '@', WHITE, "player", true);
+
+    player.alive = true;
+    player.fighter = Some(Fighter {
+      max_hp: 30,
+      hp: 30,
+      defense: 2,
+      power: 5,
+    });
+
+    self.objects.push(player);
 
     for room in self.map.rooms.iter() {
       let num_monsters = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS + 1);
@@ -43,10 +56,28 @@ impl Game {
 
         if self.is_blocked(x, y) { continue; }
 
-        let mut monster = if rand::random::<f32>() < 0.8 {
-          Object::new(x, y, 'o', colors::DESATURATED_GREEN, "orc", true)
+        let monster_type = if rand::random::<f32>() < 0.8 { "orc" } else { "troll" };
+
+        let mut monster;
+
+        if monster_type == "orc" {
+          monster = Object::new(x, y, 'o', colors::DESATURATED_GREEN, "orc", true);
+          monster.fighter = Some(Fighter {
+            max_hp: 10,
+            hp: 10,
+            defense: 0,
+            power: 3,
+          });
+          monster.ai = Some(Ai::Basic);
         } else {
-          Object::new(x, y, 'T', colors::DARKER_GREEN, "something", true)
+          monster = Object::new(x, y, 'T', colors::DARKER_GREEN, "troll", true);
+          monster.fighter = Some(Fighter {
+            max_hp: 16,
+            hp: 16,
+            defense: 1,
+            power: 4,
+          });
+          monster.ai = Some(Ai::Basic);
         };
 
         monster.alive = true;
@@ -81,11 +112,41 @@ impl Game {
     }
   }
 
-  pub fn update_objects(&mut self) {
-    for (id, object) in self.objects.iter().enumerate() {
+  fn move_towards(&mut self, id: usize, other_id: usize) {
+    let this = &self.objects[id];
+    let target = &self.objects[other_id];
+
+    let dx = target.x - this.x;
+    let dy = target.y - this.y;
+    let distance = ((dx.pow(2) + dy.pow(2)) as f32).sqrt();
+
+    let nx = (dx as f32 / distance).round() as i32;
+    let ny = (dy as f32 / distance).round() as i32;
+
+    self.move_by(id, nx, ny);
+  }
+
+  fn ai_turn(&mut self, id: usize, fov_map: &FovMap) {
+    let (ai_x, ai_y) = self.objects[id].pos();
+
+    if fov_map.is_in_fov(ai_x, ai_y) {
+      if self.objects[id].distance_to(&self.objects[PLAYER]) >= 2.0 {
+        self.move_towards(id, PLAYER);
+      } else if self.objects[PLAYER].fighter.map_or(false, |f| f.hp > 0) {
+        let monster = &self.objects[id];
+
+        println!("The {} attacks you!", monster.name);
+      }
+    }
+  }
+
+  pub fn update_objects(&mut self, fov_map: &FovMap) {
+    for id in 0..self.objects.len() {
       if id == PLAYER { continue; }
 
-      println!("The {} growls!", object.name);
+      if self.objects[id].ai.is_some() {
+        self.ai_turn(id, fov_map);
+      }
     }
   }
 }
