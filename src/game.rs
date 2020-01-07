@@ -1,14 +1,14 @@
 use rand::Rng;
-use tcod::map::{Map as FovMap};
-use tcod::{colors, colors::*};
+use ::tcod::map::{Map as FovMap};
+use ::tcod::{colors, colors::*};
 
+use crate::constants::*;
 use crate::messages::Messages;
 use crate::object::Object;
 use crate::fighter::Fighter;
+use crate::death::DeathCallback;
 use crate::ai::Ai;
 use crate::map::Map;
-
-use super::*;
 
 fn mut_two<T>(first: usize, second: usize, items: &mut [T]) -> (&mut T, &mut T) {
   assert!(first != second);
@@ -24,7 +24,7 @@ fn mut_two<T>(first: usize, second: usize, items: &mut [T]) -> (&mut T, &mut T) 
 }
 
 pub struct Game {
-  pub map: map::Map,
+  pub map: Map,
   pub objects: Vec<Object>,
   pub messages: Messages,
 }
@@ -54,13 +54,15 @@ impl Game {
     let mut player = Object::new(x, y, '@', WHITE, "player", true);
 
     player.alive = true;
-    player.fighter = Some(Fighter {
-      max_hp: 30,
-      hp: 30,
-      defense: 2,
-      power: 5,
-      on_death: fighter::DeathCallback::Player,
-    });
+    player.fighter = Some((
+      Fighter {
+        max_hp: 30,
+        hp: 30,
+        defense: 2,
+        power: 5,
+      },
+      DeathCallback::Player
+    ));
 
     self.objects.push(player);
 
@@ -79,23 +81,27 @@ impl Game {
 
         if monster_type == "orc" {
           monster = Object::new(x, y, 'o', colors::DESATURATED_GREEN, "orc", true);
-          monster.fighter = Some(Fighter {
-            max_hp: 10,
-            hp: 10,
-            defense: 0,
-            power: 3,
-            on_death: fighter::DeathCallback::Monster,
-          });
+          monster.fighter = Some((
+            Fighter {
+              max_hp: 10,
+              hp: 10,
+              defense: 0,
+              power: 3,
+            },
+            DeathCallback::Monster,
+          ));
           monster.ai = Some(Ai::Basic);
         } else {
           monster = Object::new(x, y, 'T', colors::DARKER_GREEN, "troll", true);
-          monster.fighter = Some(Fighter {
-            max_hp: 16,
-            hp: 16,
-            defense: 1,
-            power: 4,
-            on_death: fighter::DeathCallback::Monster,
-          });
+          monster.fighter = Some((
+            Fighter {
+              max_hp: 16,
+              hp: 16,
+              defense: 1,
+              power: 4,
+            },
+            DeathCallback::Monster,
+          ));
           monster.ai = Some(Ai::Basic);
         };
 
@@ -145,7 +151,7 @@ impl Game {
   pub fn attack(&mut self, id: usize, other_id: usize) {
     let (source, target) = mut_two(id, other_id, &mut self.objects);
 
-    let damage = source.fighter.unwrap().power - target.fighter.unwrap().defense;
+    let damage = source.fighter.unwrap().0.power - target.fighter.unwrap().0.defense;
     if damage > 0 {
       self.messages.add(format!("{} attacks {} for {} hit points", source.name, target.name, damage), WHITE);
       target.take_damage(damage, &mut self.messages);
@@ -161,7 +167,7 @@ impl Game {
       if self.objects[id].distance_to(&self.objects[PLAYER]) >= 2.0 {
         self.move_towards(id, PLAYER);
       } else if self.objects[id].fighter.is_some()
-        && self.objects[PLAYER].fighter.map_or(false, |f| f.hp > 0) {
+        && self.objects[PLAYER].fighter.map_or(false, |f| f.0.hp > 0) {
         self.attack(id, PLAYER);
       }
     }

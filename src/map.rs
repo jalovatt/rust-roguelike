@@ -1,10 +1,12 @@
 use std::cmp;
 use rand::Rng;
 
+use crate::constants::*;
 use crate::tile::Tile;
 use crate::rect::Rect;
 
-use super::*;
+static ROOM_MAX_SIZE: i32 = 10;
+static ROOM_MIN_SIZE: i32 = 6;
 
 pub struct Map {
   pub tiles: Vec<Vec<Tile>>,

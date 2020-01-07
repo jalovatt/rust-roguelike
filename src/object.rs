@@ -5,6 +5,8 @@ use crate::messages::Messages;
 use crate::fighter::Fighter;
 use crate::ai::Ai;
 
+use crate::death::DeathCallback;
+
 #[derive(Debug)]
 pub struct Object {
   pub x: i32,
@@ -14,7 +16,7 @@ pub struct Object {
   pub name: String,
   pub blocks: bool,
   pub alive: bool,
-  pub fighter: Option<Fighter>,
+  pub fighter: Option<(Fighter, DeathCallback)>,
   pub ai: Option<Ai>,
 }
 
@@ -39,15 +41,13 @@ impl Object {
   }
 
   pub fn take_damage(&mut self, damage: i32, messages: &mut Messages) {
-    let mut fighter = self.fighter.as_mut().unwrap();
-    let mut hp = fighter.hp - damage;
-    if hp < 0 { hp = 0; }
+    if let Some((fighter, on_death)) = self.fighter.as_mut() {
+      let alive = fighter.take_damage(damage);
 
-    fighter.hp = hp;
-
-    if hp == 0 {
-      self.alive = false;
-      fighter.on_death.callback(self, messages);
+      if !alive {
+        self.alive = false;
+        on_death.callback(self, messages);
+      }
     }
   }
 
