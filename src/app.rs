@@ -6,12 +6,15 @@ use ::tcod::map::{FovAlgorithm, Map as FovMap};
 use crate::constants::*;
 use crate::game::Game;
 use crate::map::Map;
-use crate::render::render_all;
+use crate::object::Object;
+use crate::render::{render_game, render_menu};
 use crate::tcod::Tcod;
 
 static FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
 static FOV_LIGHT_WALLS: bool = true;
 static TORCH_RADIUS: i32 = 10;
+
+static INVENTORY_WIDTH: i32 = 50;
 
 static LIMIT_FPS: i32 = 20;
 
@@ -34,6 +37,26 @@ fn get_names_under_mouse(tcod: &Tcod, game: &Game) -> String {
   names.join(", ")
 }
 
+fn show_inventory(tcod: &mut Tcod, inventory: &[Object], header: &str) -> Option<usize> {
+  let options = if inventory.is_empty() {
+    vec!["Inventory is empty.".into()]
+  } else {
+    inventory.iter().map(|item| item.name.clone()).collect()
+  };
+
+  render_menu(tcod, header, &options, INVENTORY_WIDTH);
+  let key = tcod.root.wait_for_keypress(true);
+
+  if key.printable.is_alphabetic() {
+    let index = key.printable.to_ascii_lowercase() as usize - 'a' as usize;
+    if index < options.len() {
+      return Some(index);
+    }
+  }
+
+  None
+}
+
 #[allow(clippy::ptr_arg)]
 fn handle_keys(tcod: &mut Tcod, game: &mut Game) -> PlayerAction {
   use ::tcod::input::KeyCode::*;
@@ -52,6 +75,28 @@ fn handle_keys(tcod: &mut Tcod, game: &mut Game) -> PlayerAction {
     ( Key { code: Down, .. }, _, true ) => game.player_move_or_attack(0, 1),
     ( Key { code: Left, .. }, _, true ) => game.player_move_or_attack(-1, 0),
     ( Key { code: Right, .. }, _, true ) => game.player_move_or_attack(1, 0),
+    ( Key { code: Text, .. }, "g", true ) => {
+      let item_id = game.objects
+        .iter()
+        .position(|obj| obj.pos() == game.objects[PLAYER].pos() && obj.item.is_some());
+
+      if let Some(item_id) = item_id {
+        game.pick_item_up(item_id);
+      }
+
+      return PlayerAction::DidntTakeTurn
+    },
+    ( Key { code: Text, .. }, "i", true ) => {
+      if let Some(inventory_id) = show_inventory(
+        tcod,
+        &game.inventory,
+        "Press the key listed next to an item to use it, or any other key to cancel.\n"
+      ) {
+        game.use_item(inventory_id);
+      }
+
+      return PlayerAction::DidntTakeTurn
+    },
     _ => return PlayerAction::DidntTakeTurn,
   }
 
@@ -116,7 +161,7 @@ pub fn play() {
 
     let names_under_mouse = get_names_under_mouse(&tcod, &game);
 
-    render_all(&mut tcod, &mut game, names_under_mouse);
+    render_game(&mut tcod, &mut game, names_under_mouse);
 
     let player = &mut game.objects[0];
     previous_player_position = (player.x, player.y);

@@ -115,7 +115,48 @@ fn render_messages(tcod: &mut Tcod, game: &Game) {
   }
 }
 
-pub fn render_all(tcod: &mut Tcod, game: &mut Game, names_under_mouse: String) {
+pub fn render_menu<T: AsRef<str>>(tcod: &mut Tcod, header: &str, options: &[T], width: i32) {
+  assert!(
+    options.len() <= 26,
+    "Cannot have a menu with more than 26 options",
+  );
+
+  let header_height = tcod.root.get_height_rect(0, 0, width, SCREEN_HEIGHT, header);
+  let height = options.len() as i32 + header_height;
+
+  let mut window = Offscreen::new(width, height);
+  window.set_default_foreground(WHITE);
+  window.print_rect_ex(
+    0,
+    0,
+    width,
+    height,
+    BackgroundFlag::None,
+    TextAlignment::Left,
+    header,
+  );
+
+  for (index, option_text) in options.iter().enumerate() {
+    let menu_letter = (b'a' + index as u8) as char;
+    let text = format!("({}) {}", menu_letter, option_text.as_ref());
+    window.print_ex(
+      0,
+      header_height + index as i32,
+      BackgroundFlag::None,
+      TextAlignment::Left,
+      text,
+    );
+  }
+
+  let x = SCREEN_WIDTH / 2 - width / 2;
+  let y = SCREEN_HEIGHT / 2 - height / 2;
+
+  blit(&window, (0, 0), (width, height), &mut tcod.root, (x, y), 1.0, 0.7);
+
+  tcod.root.flush();
+}
+
+pub fn render_game(tcod: &mut Tcod, game: &mut Game, names_under_mouse: String) {
   tcod.con.clear();
 
   render_objects(tcod, game);

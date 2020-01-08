@@ -9,6 +9,7 @@ use crate::fighter::Fighter;
 use crate::death::Death;
 use crate::ai::Ai;
 use crate::map::Map;
+use crate::item::Item;
 
 fn mut_two<T>(first: usize, second: usize, items: &mut [T]) -> (&mut T, &mut T) {
   assert!(first != second);
@@ -42,9 +43,15 @@ fn monster_death(monster: &mut Object, messages: &mut Messages) {
   monster.name = format!("remains of {}", monster.name);
 }
 
+enum UseResult {
+  UsedUp,
+  Cancelled,
+}
+
 pub struct Game {
   pub map: Map,
   pub objects: Vec<Object>,
+  pub inventory: Vec<Object>,
   pub messages: Messages,
 }
 
@@ -52,9 +59,10 @@ impl Game {
   pub fn new() -> Game {
     let map = Map::new();
     let objects = Vec::new();
+    let inventory = Vec::new();
     let messages = Messages::new();
 
-    let mut game = Game { map, objects, messages };
+    let mut game = Game { map, objects, inventory, messages };
     game.create_objects();
 
     game
@@ -128,6 +136,20 @@ impl Game {
 
         self.objects.push(monster);
       }
+
+      let num_items = rand::thread_rng().gen_range(0, MAX_ROOM_ITEMS + 1);
+
+      for _ in 0..num_items {
+        let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
+        let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
+
+        if self.is_blocked(x, y) { continue; }
+
+        let mut object = Object::new(x, y, '!', VIOLET, "healing potion", false);
+        object.item = Some(Item::Heal);
+
+        self.objects.push(object);
+      }
     }
   }
 
@@ -165,6 +187,59 @@ impl Game {
     let ny = (dy as f32 / distance).round() as i32;
 
     self.move_by(id, nx, ny);
+  }
+
+  pub fn pick_item_up(&mut self, object_id: usize) {
+    if self.inventory.len() >= 26 {
+      self.messages.add(
+        format!(
+          "Cannot pick up {}. Inventory is full.",
+          self.objects[object_id].name,
+        ),
+        RED
+      );
+    } else {
+      let item = self.objects.swap_remove(object_id);
+      self.messages.add(format!("You picked up a {}!", item.name), GREEN);
+      self.inventory.push(item);
+    }
+  }
+
+  fn cast_heal(&mut self, _inventory_id: usize) -> UseResult {
+    if let Some(fighter) = self.objects[PLAYER].fighter {
+      if fighter.0.hp == fighter.0.max_hp {
+        self.messages.add("You are already at full health.", RED);
+        return UseResult::Cancelled;
+      }
+
+      self.messages.add("Your wounds start to feel better!", LIGHT_VIOLET);
+      self.objects[PLAYER].heal(HEAL_AMOUNT);
+      return UseResult::UsedUp;
+    }
+
+    UseResult::Cancelled
+  }
+
+  pub fn use_item(&mut self, inventory_id: usize) {
+    if let Some(item) = &self.inventory[inventory_id].item {
+      let on_use = match item {
+        Item::Heal => Game::cast_heal,
+      };
+
+      match on_use(self, inventory_id) {
+        UseResult::UsedUp => {
+          self.inventory.remove(inventory_id);
+        }
+        UseResult::Cancelled => {
+          self.messages.add("Cancelled", WHITE);
+        }
+      }
+    } else {
+      self.messages.add(
+        format!("The {} cannot be used.", self.inventory[inventory_id].name),
+        WHITE,
+      );
+    }
   }
 
   pub fn attack(&mut self, id: usize, other_id: usize) {

@@ -3,6 +3,7 @@ use tcod::console::*;
 
 use crate::fighter::Fighter;
 use crate::ai::Ai;
+use crate::item::Item;
 
 use crate::death::Death;
 
@@ -17,11 +18,12 @@ pub struct Object {
   pub alive: bool,
   pub fighter: Option<(Fighter, Death)>,
   pub ai: Option<Ai>,
+  pub item: Option<Item>,
 }
 
 impl Object {
   pub fn new(x: i32, y: i32, char: char, color: Color, name: &str, blocks: bool) -> Self {
-    Object { x, y, char, color, blocks, name: name.into(), alive: false, fighter: None, ai: None }
+    Object { x, y, char, color, blocks, name: name.into(), alive: false, fighter: None, ai: None, item: None }
   }
 
   pub fn set_pos(&mut self, x: i32, y: i32) {
@@ -53,6 +55,13 @@ impl Object {
     }
 
     true
+  }
+
+  pub fn heal(&mut self, amount: i32) {
+    if let Some((fighter, _)) = self.fighter.as_mut() {
+      let hp = fighter.hp + amount;
+      fighter.hp = if hp > fighter.max_hp { fighter.max_hp } else { hp };
+    }
   }
 
   pub fn draw(&self, con: &mut dyn Console) {
