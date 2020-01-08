@@ -6,7 +6,7 @@ use crate::constants::*;
 use crate::messages::Messages;
 use crate::object::Object;
 use crate::fighter::Fighter;
-use crate::death::DeathCallback;
+use crate::death::Death;
 use crate::ai::Ai;
 use crate::map::Map;
 
@@ -21,6 +21,25 @@ fn mut_two<T>(first: usize, second: usize, items: &mut [T]) -> (&mut T, &mut T) 
   } else {
     (&mut second_slice[0], &mut first_slice[second])
   }
+}
+
+
+fn player_death(player: &mut Object, messages: &mut Messages) {
+  messages.add("You died!", RED);
+
+  player.char = '%';
+  player.color = DARK_RED;
+}
+
+fn monster_death(monster: &mut Object, messages: &mut Messages) {
+  messages.add(format!("{} died!", monster.name), ORANGE);
+
+  monster.char = '%';
+  monster.color = DARK_RED;
+  monster.blocks = false;
+  monster.fighter = None;
+  monster.ai = None;
+  monster.name = format!("remains of {}", monster.name);
 }
 
 pub struct Game {
@@ -61,7 +80,7 @@ impl Game {
         defense: 2,
         power: 5,
       },
-      DeathCallback::Player
+      Death::Player
     ));
 
     self.objects.push(player);
@@ -88,7 +107,7 @@ impl Game {
               defense: 0,
               power: 3,
             },
-            DeathCallback::Monster,
+            Death::Monster,
           ));
           monster.ai = Some(Ai::Basic);
         } else {
@@ -100,7 +119,7 @@ impl Game {
               defense: 1,
               power: 4,
             },
-            DeathCallback::Monster,
+            Death::Monster,
           ));
           monster.ai = Some(Ai::Basic);
         };
@@ -154,7 +173,12 @@ impl Game {
     let damage = source.fighter.unwrap().0.power - target.fighter.unwrap().0.defense;
     if damage > 0 {
       self.messages.add(format!("{} attacks {} for {} hit points", source.name, target.name, damage), WHITE);
-      target.take_damage(damage, &mut self.messages);
+      if !target.take_damage(damage) {
+        match target.fighter.unwrap().1 {
+          Death::Player => player_death(target, &mut self.messages),
+          Death::Monster => monster_death(target, &mut self.messages),
+        }
+      }
     } else {
       self.messages.add(format!("{} attacks {} but it has no effect", source.name, target.name), WHITE);
     }
@@ -171,24 +195,6 @@ impl Game {
         self.attack(id, PLAYER);
       }
     }
-  }
-
-  pub fn player_death(player: &mut Object, messages: &mut Messages) {
-    messages.add("You died!", RED);
-
-    player.char = '%';
-    player.color = DARK_RED;
-  }
-
-  pub fn monster_death(monster: &mut Object, messages: &mut Messages) {
-    messages.add(format!("{} died!", monster.name), ORANGE);
-
-    monster.char = '%';
-    monster.color = DARK_RED;
-    monster.blocks = false;
-    monster.fighter = None;
-    monster.ai = None;
-    monster.name = format!("remains of {}", monster.name);
   }
 
   pub fn update_objects(&mut self, fov_map: &FovMap) {

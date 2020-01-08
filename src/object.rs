@@ -1,11 +1,10 @@
 use tcod::colors::*;
 use tcod::console::*;
 
-use crate::messages::Messages;
 use crate::fighter::Fighter;
 use crate::ai::Ai;
 
-use crate::death::DeathCallback;
+use crate::death::Death;
 
 #[derive(Debug)]
 pub struct Object {
@@ -16,7 +15,7 @@ pub struct Object {
   pub name: String,
   pub blocks: bool,
   pub alive: bool,
-  pub fighter: Option<(Fighter, DeathCallback)>,
+  pub fighter: Option<(Fighter, Death)>,
   pub ai: Option<Ai>,
 }
 
@@ -40,15 +39,20 @@ impl Object {
     ((dx.pow(2) + dy.pow(2)) as f32).sqrt()
   }
 
-  pub fn take_damage(&mut self, damage: i32, messages: &mut Messages) {
-    if let Some((fighter, on_death)) = self.fighter.as_mut() {
+  pub fn take_damage(&mut self, damage: i32) -> bool {
+    if let Some((fighter, _)) = self.fighter.as_mut() {
       let alive = fighter.take_damage(damage);
 
       if !alive {
         self.alive = false;
-        on_death.callback(self, messages);
+
+        return false;
       }
+
+      return true;
     }
+
+    true
   }
 
   pub fn draw(&self, con: &mut dyn Console) {
